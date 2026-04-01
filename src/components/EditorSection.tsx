@@ -12,19 +12,27 @@ In the middle of difficulty lies opportunity. What we think, we become. The only
 
 export default function EditorSection() {
   const [text, setText] = useState(SAMPLE_TEXT);
-  const [style, setStyle] = useState<HandwritingStyle>(HANDWRITING_STYLES[0]);
+  const [style, setStyle] = useState<HandwritingStyle>(
+    HANDWRITING_STYLES.find((s) => s.id === 'exam') ?? HANDWRITING_STYLES[0],
+  );
   const [fontSize, setFontSize] = useState(18);
   const [lineSpacing, setLineSpacing] = useState(100);
-  const [inkColor, setInkColor] = useState('#1a3a6b');
-  const [showLines, setShowLines] = useState(true);
+  const [showLines, setShowLines] = useState(false);
+  const [humanImperfections, setHumanImperfections] = useState(true);
+  const [fixedLinesEnabled, setFixedLinesEnabled] = useState(true);
+  const [linesPerPage, setLinesPerPage] = useState(18);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [variationSeed, setVariationSeed] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [pageMargins, setPageMargins] = useState<PageMargins[]>([{ ...DEFAULT_MARGINS }]);
   const [totalPages, setTotalPages] = useState(1);
   const [pageBreaks, setPageBreaks] = useState<number[]>([0]); // segment start indices per page
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const options = useMemo(() => ({ style, fontSize, lineSpacing, inkColor, showLines }), [style, fontSize, lineSpacing, inkColor, showLines]);
+  const options = useMemo(
+    () => ({ style, fontSize, lineSpacing, showLines, humanImperfections, fixedLinesEnabled, linesPerPage, variationSeed }),
+    [style, fontSize, lineSpacing, showLines, humanImperfections, fixedLinesEnabled, linesPerPage, variationSeed],
+  );
 
   // Calculate all page breaks whenever text or options change
   useEffect(() => {
@@ -88,7 +96,8 @@ export default function EditorSection() {
 
   const handleGenerate = useCallback(() => {
     setIsGenerating(true);
-    setTimeout(() => setIsGenerating(false), 1500);
+    setVariationSeed((prev) => prev + 1);
+    setTimeout(() => setIsGenerating(false), 450);
   }, []);
 
   const downloadPNG = useCallback(() => {
@@ -257,13 +266,17 @@ export default function EditorSection() {
               style={style}
               fontSize={fontSize}
               lineSpacing={lineSpacing}
-              inkColor={inkColor}
               showLines={showLines}
+              humanImperfections={humanImperfections}
+              fixedLinesEnabled={fixedLinesEnabled}
+              linesPerPage={linesPerPage}
               onStyleChange={setStyle}
               onFontSizeChange={setFontSize}
               onLineSpacingChange={setLineSpacing}
-              onInkColorChange={setInkColor}
               onShowLinesChange={setShowLines}
+              onHumanImperfectionsChange={setHumanImperfections}
+              onFixedLinesEnabledChange={setFixedLinesEnabled}
+              onLinesPerPageChange={setLinesPerPage}
             />
           </div>
 

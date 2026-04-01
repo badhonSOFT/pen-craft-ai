@@ -14,6 +14,7 @@ const MARGIN_FIELDS: { key: keyof PageMargins; label: string; min: number; max: 
   { key: 'bottom', label: 'Bottom', min: 10, max: 120 },
   { key: 'left', label: 'Left', min: 20, max: 120 },
   { key: 'right', label: 'Right', min: 20, max: 120 },
+  { key: 'leftTextGap', label: 'Left Text Gap', min: 0, max: 40 },
 ];
 
 export default function PageMarginControls({ pageIndex, margins, onChange, onReset }: Props) {
@@ -61,10 +62,19 @@ export default function PageMarginControls({ pageIndex, margins, onChange, onRes
             bottom: `${(margins.bottom / 120) * 100}%`,
           }}
         />
+        <div
+          className="absolute top-1 bottom-1 w-px bg-foreground/40"
+          style={{ left: `${(margins.left / 120) * 100}%` }}
+        />
+        <div
+          className="absolute top-1 bottom-1 w-px bg-foreground/25"
+          style={{ left: `${((margins.left + margins.leftTextGap) / 120) * 100}%` }}
+        />
         <span className="absolute top-0.5 left-1/2 -translate-x-1/2 text-[7px] text-muted-foreground">{margins.top}</span>
         <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[7px] text-muted-foreground">{margins.bottom}</span>
         <span className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[7px] text-muted-foreground">{margins.left}</span>
         <span className="absolute right-0.5 top-1/2 -translate-y-1/2 text-[7px] text-muted-foreground">{margins.right}</span>
+        <span className="absolute top-0.5 right-0.5 text-[7px] text-muted-foreground">gap {margins.leftTextGap}</span>
       </div>
     </div>
   );

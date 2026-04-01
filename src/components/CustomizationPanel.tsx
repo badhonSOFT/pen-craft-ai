@@ -7,21 +7,18 @@ interface Props {
   style: HandwritingStyle;
   fontSize: number;
   lineSpacing: number;
-  inkColor: string;
   showLines: boolean;
+  humanImperfections: boolean;
+  fixedLinesEnabled: boolean;
+  linesPerPage: number;
   onStyleChange: (s: HandwritingStyle) => void;
   onFontSizeChange: (v: number) => void;
   onLineSpacingChange: (v: number) => void;
-  onInkColorChange: (v: string) => void;
   onShowLinesChange: (v: boolean) => void;
+  onHumanImperfectionsChange: (v: boolean) => void;
+  onFixedLinesEnabledChange: (v: boolean) => void;
+  onLinesPerPageChange: (v: number) => void;
 }
-
-const INK_COLORS = [
-  { label: 'Blue', value: '#1a3a6b' },
-  { label: 'Black', value: '#1a1a1a' },
-  { label: 'Dark Blue', value: '#0d1f4b' },
-  { label: 'Red', value: '#8b1a1a' },
-];
 
 export default function CustomizationPanel(props: Props) {
   return (
@@ -81,32 +78,44 @@ export default function CustomizationPanel(props: Props) {
         />
       </div>
 
-      {/* Ink Color */}
-      <div>
-        <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 block">
-          Ink Color
-        </Label>
-        <div className="flex gap-2">
-          {INK_COLORS.map((c) => (
-            <button
-              key={c.value}
-              onClick={() => props.onInkColorChange(c.value)}
-              className={`w-10 h-10 rounded-full border-2 transition-all duration-200 ${
-                props.inkColor === c.value ? 'border-accent scale-110 shadow-md' : 'border-border hover:scale-105'
-              }`}
-              style={{ backgroundColor: c.value }}
-              title={c.label}
-            />
-          ))}
-        </div>
-      </div>
-
       {/* Notebook Lines */}
       <div className="flex items-center justify-between">
         <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Notebook Lines
         </Label>
         <Switch checked={props.showLines} onCheckedChange={props.onShowLinesChange} />
+      </div>
+
+      {/* Human Imperfections */}
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Human Imperfections
+        </Label>
+        <Switch checked={props.humanImperfections} onCheckedChange={props.onHumanImperfectionsChange} />
+      </div>
+
+      {/* Fixed Lines */}
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Fixed Lines Per Page
+        </Label>
+        <Switch checked={props.fixedLinesEnabled} onCheckedChange={props.onFixedLinesEnabledChange} />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Lines Per Page</Label>
+          <span className="text-xs text-muted-foreground">{props.linesPerPage}</span>
+        </div>
+        <Slider
+          value={[props.linesPerPage]}
+          onValueChange={([v]) => props.onLinesPerPageChange(v)}
+          min={8}
+          max={40}
+          step={1}
+          className="w-full"
+          disabled={!props.fixedLinesEnabled}
+        />
       </div>
     </div>
   );

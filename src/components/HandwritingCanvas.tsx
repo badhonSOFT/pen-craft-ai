@@ -21,8 +21,12 @@ export default function HandwritingCanvas({ text, options, margins, pageIndex, s
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    canvas.width = A4_WIDTH;
-    canvas.height = A4_HEIGHT;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(A4_WIDTH * dpr);
+    canvas.height = Math.floor(A4_HEIGHT * dpr);
+    canvas.style.width = `${A4_WIDTH}px`;
+    canvas.style.height = `${A4_HEIGHT}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const segments = splitTextSegments(text || 'Start typing to see your handwriting...');
     const result = renderHandwritingPage(ctx, segments, startSegmentIndex, A4_WIDTH, A4_HEIGHT, options, margins);
