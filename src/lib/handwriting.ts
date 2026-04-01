@@ -29,24 +29,43 @@ function seededRandom(seed: number): () => number {
   };
 }
 
+export interface PageMargins {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+export const DEFAULT_MARGINS: PageMargins = { top: 50, left: 60, right: 40, bottom: 40 };
+
 export interface RenderOptions {
   style: HandwritingStyle;
   fontSize: number;
   lineSpacing: number;
   inkColor: string;
-  marginLeft: number;
-  marginTop: number;
   showLines: boolean;
 }
 
-export function renderHandwriting(
+export interface PageRenderResult {
+  /** Index of the first word-segment not rendered on this page */
+  nextSegmentIndex: number;
+  /** Whether all text fit on this page */
+  complete: boolean;
+}
+
+export const A4_WIDTH = 794;
+export const A4_HEIGHT = 1123;
+
+export function renderHandwritingPage(
   ctx: CanvasRenderingContext2D,
-  text: string,
+  segments: string[],
+  startIndex: number,
   width: number,
   height: number,
-  options: RenderOptions
-) {
-  const { style, fontSize, lineSpacing, inkColor, marginLeft, marginTop, showLines } = options;
+  options: RenderOptions,
+  margins: PageMargins,
+): PageRenderResult {
+  const { style, fontSize, lineSpacing, inkColor, showLines } = options;
   const scale = fontSize / style.baseSize;
   const effectiveLineHeight = style.lineHeight * scale * (lineSpacing / 100);
   const effectiveLetterSpacing = style.letterSpacing * scale;
@@ -67,6 +86,13 @@ export function renderHandwriting(
     ctx.fillRect(rand() * width, rand() * height, 1, 1);
   }
 
+  const marginLeft = margins.left;
+  const marginTop = margins.top;
+  const marginRight = margins.right;
+  const marginBottom = margins.bottom;
+  const maxX = width - marginRight;
+  const maxY = height - marginBottom;
+
   // Red margin line
   if (showLines) {
     ctx.strokeStyle = 'rgba(220, 80, 80, 0.25)';
@@ -82,7 +108,7 @@ export function renderHandwriting(
     ctx.strokeStyle = 'rgba(130, 170, 220, 0.3)';
     ctx.lineWidth = 0.5;
     let lineY = marginTop + effectiveLineHeight;
-    while (lineY < height - 20) {
+    while (lineY < maxY) {
       ctx.beginPath();
       ctx.moveTo(20, lineY);
       ctx.lineTo(width - 20, lineY);
@@ -96,17 +122,18 @@ export function renderHandwriting(
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  const words = text.split(/(\s+)/);
   let x = marginLeft;
   let y = marginTop + effectiveLineHeight;
-  const maxX = width - 40;
-  const charRand = seededRandom(7);
+  const charRand = seededRandom(7 + startIndex);
 
-  for (const segment of words) {
+  let i = startIndex;
+  for (; i < segments.length; i++) {
+    const segment = segments[i];
+
     if (segment === '\n') {
       x = marginLeft;
       y += effectiveLineHeight;
-      if (y > height - 30) break;
+      if (y > maxY) return { nextSegmentIndex: i, complete: false };
       continue;
     }
 
@@ -120,7 +147,7 @@ export function renderHandwriting(
     if (x + wordWidth > maxX && x > marginLeft) {
       x = marginLeft;
       y += effectiveLineHeight;
-      if (y > height - 30) break;
+      if (y > maxY) return { nextSegmentIndex: i, complete: false };
     }
 
     for (const char of segment) {
@@ -138,17 +165,51 @@ export function renderHandwriting(
       ctx.font = `${style.slant > 0.1 ? 'italic ' : ''}${style.strokeWidth > 1.5 ? '600' : '400'} ${charSize}px 'Segoe Script', 'Bradley Hand', 'Comic Sans MS', cursive`;
       ctx.fillText(char, 0, 0);
 
-      // Ink pressure variation
       if (style.strokeWidth > 1.3) {
         ctx.globalAlpha = 0.05;
         ctx.fillText(char, 0.5, 0.5);
       }
 
       ctx.restore();
-
       x += charSize * 0.55 + effectiveLetterSpacing + offsetX * 0.3;
     }
 
     x += effectiveWordSpacing;
   }
+
+  return { nextSegmentIndex: i, complete: true };
+}
+
+/** Split text into word/whitespace/newline segments */
+export function splitTextSegments(text: string): string[] {
+  return text.split(/(\s+)/);
+}
+
+/** Calculate how many pages are needed and return segment break indices */
+export function calculatePages(
+  text: string,
+  options: RenderOptions,
+  pageMargins: PageMargins[],
+): number {
+  // Use an offscreen canvas to simulate rendering
+  const canvas = document.createElement('canvas');
+  canvas.width = A4_WIDTH;
+  canvas.height = A4_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return 1;
+
+  const segments = splitTextSegments(text);
+  let startIndex = 0;
+  let pageCount = 0;
+
+  while (startIndex < segments.length) {
+    const margins = pageMargins[Math.min(pageCount, pageMargins.length - 1)] || DEFAULT_MARGINS;
+    const result = renderHandwritingPage(ctx, segments, startIndex, A4_WIDTH, A4_HEIGHT, options, margins);
+    pageCount++;
+    if (result.complete) break;
+    startIndex = result.nextSegmentIndex;
+    if (pageCount > 100) break; // safety
+  }
+
+  return Math.max(1, pageCount);
 }

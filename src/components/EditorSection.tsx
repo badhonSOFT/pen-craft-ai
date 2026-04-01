@@ -1,8 +1,9 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { HANDWRITING_STYLES, type HandwritingStyle } from '@/lib/handwriting';
+import { HANDWRITING_STYLES, type HandwritingStyle, type PageMargins, DEFAULT_MARGINS, splitTextSegments, renderHandwritingPage, A4_WIDTH, A4_HEIGHT } from '@/lib/handwriting';
 import HandwritingCanvas from './HandwritingCanvas';
 import CustomizationPanel from './CustomizationPanel';
+import PageMarginControls from './PageMarginControls';
 import { jsPDF } from 'jspdf';
 
 const SAMPLE_TEXT = `The quick brown fox jumps over the lazy dog. Every moment is a fresh beginning. Sometimes the smallest step in the right direction ends up being the biggest step of your life.
@@ -17,9 +18,73 @@ export default function EditorSection() {
   const [inkColor, setInkColor] = useState('#1a3a6b');
   const [showLines, setShowLines] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageMargins, setPageMargins] = useState<PageMargins[]>([{ ...DEFAULT_MARGINS }]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageBreaks, setPageBreaks] = useState<number[]>([0]); // segment start indices per page
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const options = { style, fontSize, lineSpacing, inkColor, marginLeft: 60, marginTop: 50, showLines };
+  const options = useMemo(() => ({ style, fontSize, lineSpacing, inkColor, showLines }), [style, fontSize, lineSpacing, inkColor, showLines]);
+
+  // Calculate all page breaks whenever text or options change
+  useEffect(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = A4_WIDTH;
+    canvas.height = A4_HEIGHT;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const segments = splitTextSegments(text || 'Start typing...');
+    const breaks: number[] = [0];
+    let startIndex = 0;
+    let pageIdx = 0;
+
+    while (startIndex < segments.length && pageIdx < 100) {
+      const margins = pageMargins[Math.min(pageIdx, pageMargins.length - 1)] || DEFAULT_MARGINS;
+      const result = renderHandwritingPage(ctx, segments, startIndex, A4_WIDTH, A4_HEIGHT, options, margins);
+      if (result.complete) break;
+      startIndex = result.nextSegmentIndex;
+      breaks.push(startIndex);
+      pageIdx++;
+    }
+
+    const total = breaks.length;
+    setPageBreaks(breaks);
+    setTotalPages(total);
+
+    // Ensure pageMargins array has entries for all pages
+    if (pageMargins.length < total) {
+      setPageMargins(prev => {
+        const extended = [...prev];
+        while (extended.length < total) {
+          extended.push({ ...DEFAULT_MARGINS });
+        }
+        return extended;
+      });
+    }
+
+    // Clamp current page
+    if (currentPage >= total) setCurrentPage(total - 1);
+  }, [text, options, pageMargins, currentPage]);
+
+  const currentMargins = pageMargins[currentPage] || DEFAULT_MARGINS;
+  const startSegment = pageBreaks[currentPage] || 0;
+
+  const handleMarginChange = useCallback((margins: PageMargins) => {
+    setPageMargins(prev => {
+      const next = [...prev];
+      next[currentPage] = margins;
+      return next;
+    });
+  }, [currentPage]);
+
+  const handleMarginReset = useCallback(() => {
+    handleMarginChange({ ...DEFAULT_MARGINS });
+  }, [handleMarginChange]);
+
+  const handleApplyToAll = useCallback(() => {
+    setPageMargins(prev => prev.map(() => ({ ...currentMargins })));
+  }, [currentMargins]);
 
   const handleGenerate = useCallback(() => {
     setIsGenerating(true);
@@ -30,19 +95,37 @@ export default function EditorSection() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement('a');
-    link.download = 'handwriting.png';
+    link.download = `handwriting-page-${currentPage + 1}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
-  }, []);
+  }, [currentPage]);
 
   const downloadPDF = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const imgData = canvas.toDataURL('image/png');
+    // Render all pages into a single PDF
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    pdf.addImage(imgData, 'PNG', 0, 0, 210, 297);
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = A4_WIDTH;
+    tempCanvas.height = A4_HEIGHT;
+    const ctx = tempCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const segments = splitTextSegments(text);
+    let startIndex = 0;
+    let pageIdx = 0;
+
+    while (startIndex < segments.length && pageIdx < 100) {
+      if (pageIdx > 0) pdf.addPage();
+      const margins = pageMargins[Math.min(pageIdx, pageMargins.length - 1)] || DEFAULT_MARGINS;
+      const result = renderHandwritingPage(ctx, segments, startIndex, A4_WIDTH, A4_HEIGHT, options, margins);
+      const imgData = tempCanvas.toDataURL('image/png');
+      pdf.addImage(imgData, 'PNG', 0, 0, 210, 297);
+      if (result.complete) break;
+      startIndex = result.nextSegmentIndex;
+      pageIdx++;
+    }
+
     pdf.save('handwriting.pdf');
-  }, []);
+  }, [text, options, pageMargins]);
 
   return (
     <section className="py-20 px-4 sm:px-6 max-w-7xl mx-auto" id="editor">
@@ -93,42 +176,117 @@ export default function EditorSection() {
               ↓ PNG
             </button>
             <button onClick={downloadPDF} className="btn-premium-outline">
-              ↓ PDF
+              ↓ PDF (All Pages)
             </button>
           </div>
 
+          {/* Page Navigation */}
+          {totalPages > 1 && (
+            <motion.div
+              className="flex items-center justify-center gap-3"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              <button
+                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+                className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-sm font-medium disabled:opacity-30 hover:bg-secondary transition-colors"
+              >
+                ‹
+              </button>
+
+              <div className="flex gap-1.5">
+                {Array.from({ length: totalPages }, (_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCurrentPage(i)}
+                    className={`w-8 h-8 rounded-full text-xs font-medium transition-all duration-200 ${
+                      currentPage === i
+                        ? 'bg-primary text-primary-foreground shadow-md scale-110'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                disabled={currentPage === totalPages - 1}
+                className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-sm font-medium disabled:opacity-30 hover:bg-secondary transition-colors"
+              >
+                ›
+              </button>
+
+              <span className="text-xs text-muted-foreground ml-2">
+                Page {currentPage + 1} of {totalPages}
+              </span>
+            </motion.div>
+          )}
+
           {/* Canvas Preview */}
           <motion.div
+            key={currentPage}
             initial={{ opacity: 0, scale: 0.98 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
           >
-            <HandwritingCanvas text={text} options={options} canvasRef={canvasRef} />
+            <HandwritingCanvas
+              text={text}
+              options={options}
+              margins={currentMargins}
+              pageIndex={currentPage}
+              startSegmentIndex={startSegment}
+              canvasRef={canvasRef}
+            />
           </motion.div>
         </div>
 
         {/* Right: Customization */}
         <motion.aside
-          className="glass-card-elevated p-6"
+          className="glass-card-elevated p-6 space-y-8 max-h-[calc(100vh-120px)] overflow-y-auto"
           initial={{ opacity: 0, x: 20 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }}
         >
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-6">Customize</h3>
-          <CustomizationPanel
-            style={style}
-            fontSize={fontSize}
-            lineSpacing={lineSpacing}
-            inkColor={inkColor}
-            showLines={showLines}
-            onStyleChange={setStyle}
-            onFontSizeChange={setFontSize}
-            onLineSpacingChange={setLineSpacing}
-            onInkColorChange={setInkColor}
-            onShowLinesChange={setShowLines}
-          />
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-6">Customize</h3>
+            <CustomizationPanel
+              style={style}
+              fontSize={fontSize}
+              lineSpacing={lineSpacing}
+              inkColor={inkColor}
+              showLines={showLines}
+              onStyleChange={setStyle}
+              onFontSizeChange={setFontSize}
+              onLineSpacingChange={setLineSpacing}
+              onInkColorChange={setInkColor}
+              onShowLinesChange={setShowLines}
+            />
+          </div>
+
+          {/* Divider */}
+          <div className="h-px bg-border" />
+
+          {/* Page Margins */}
+          <div>
+            <PageMarginControls
+              pageIndex={currentPage}
+              margins={currentMargins}
+              onChange={handleMarginChange}
+              onReset={handleMarginReset}
+            />
+            {totalPages > 1 && (
+              <button
+                onClick={handleApplyToAll}
+                className="mt-3 w-full text-[10px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground border border-border rounded-lg py-2 transition-colors"
+              >
+                Apply margins to all pages
+              </button>
+            )}
+          </div>
         </motion.aside>
       </div>
     </section>

@@ -1,16 +1,18 @@
 import { useRef, useEffect, useCallback } from 'react';
-import { renderHandwriting, type RenderOptions } from '@/lib/handwriting';
+import { renderHandwritingPage, splitTextSegments, type RenderOptions, type PageMargins, A4_WIDTH, A4_HEIGHT } from '@/lib/handwriting';
 
 interface Props {
   text: string;
   options: RenderOptions;
+  margins: PageMargins;
+  pageIndex: number;
+  /** Segment index to start rendering from for this page */
+  startSegmentIndex: number;
   canvasRef?: React.RefObject<HTMLCanvasElement>;
+  onPageRendered?: (nextIndex: number, complete: boolean) => void;
 }
 
-const A4_WIDTH = 794;
-const A4_HEIGHT = 1123;
-
-export default function HandwritingCanvas({ text, options, canvasRef: externalRef }: Props) {
+export default function HandwritingCanvas({ text, options, margins, pageIndex, startSegmentIndex, canvasRef: externalRef, onPageRendered }: Props) {
   const internalRef = useRef<HTMLCanvasElement>(null);
   const ref = externalRef || internalRef;
 
@@ -21,8 +23,11 @@ export default function HandwritingCanvas({ text, options, canvasRef: externalRe
     if (!ctx) return;
     canvas.width = A4_WIDTH;
     canvas.height = A4_HEIGHT;
-    renderHandwriting(ctx, text || 'Start typing to see your handwriting...', A4_WIDTH, A4_HEIGHT, options);
-  }, [text, options, ref]);
+
+    const segments = splitTextSegments(text || 'Start typing to see your handwriting...');
+    const result = renderHandwritingPage(ctx, segments, startSegmentIndex, A4_WIDTH, A4_HEIGHT, options, margins);
+    onPageRendered?.(result.nextSegmentIndex, result.complete);
+  }, [text, options, margins, startSegmentIndex, ref, onPageRendered]);
 
   useEffect(() => {
     draw();
